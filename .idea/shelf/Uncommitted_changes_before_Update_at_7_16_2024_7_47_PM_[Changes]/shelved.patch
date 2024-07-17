@@ -1,0 +1,952 @@
+Index: manage.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>from app import app\r\n\r\nif __name__ == \"__main__\":\r\n    app.run(debug=True)\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/manage.py b/manage.py
+--- a/manage.py	(revision 028b0c406001fccbab2830854ecdfad57cc2ab3d)
++++ b/manage.py	(date 1721139957468)
+@@ -1,4 +1,4 @@
+ from app import app
+ 
+ if __name__ == "__main__":
+-    app.run(debug=True)
++    app.run(debug=True,port=5000)
+Index: app/routes.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>from flask import render_template, redirect, url_for, request, flash, session\r\nfrom app import app, db, bcrypt\r\nfrom app.forms import LoginForm, RegisterForm\r\nfrom app.models import User\r\n\r\n@app.route('/')\r\ndef home():\r\n    return render_template('home.html')\r\n\r\n@app.route('/login', methods=['GET', 'POST'])\r\ndef login():\r\n    form = LoginForm()\r\n    if form.validate_on_submit():\r\n        user = User.query.filter_by(username=form.username.data).first()\r\n        if user and bcrypt.check_password_hash(user.password, form.password.data):\r\n            session['user_id'] = user.id\r\n            session['username'] = user.username\r\n            flash(f'You are now logged in as {user.username}!', 'success')\r\n            return redirect(url_for('user_menu'))\r\n        else:\r\n            flash('Username or password is incorrect.', 'danger')\r\n    return render_template('authorization/login.html', form=form)\r\n\r\n@app.route('/register', methods=['GET', 'POST'])\r\ndef register():\r\n    form = RegisterForm()\r\n    if form.validate_on_submit():\r\n        hashed_password = bcrypt.generate_password_hash(form.password.data).decode(\"utf-8\")\r\n        user = User(username=form.username.data, email=form.email.data, password=hashed_password)\r\n        db.session.add(user)\r\n        db.session.commit()\r\n        flash('You are now registered!', 'success')\r\n        return redirect(url_for('login'))\r\n    return render_template('authorization/register.html', form=form)\r\n\r\n@app.route('/usermenu')\r\ndef user_menu():\r\n\r\n    if 'user_id' not in session:\r\n        flash('You need to login first.', 'danger')\r\n        return redirect(url_for('login'))\r\n\r\n\r\n    user_id = session['user_id']\r\n    user = User.query.get(user_id)\r\n\r\n    return render_template('user.menu.html', user=user)\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/routes.py b/app/routes.py
+--- a/app/routes.py	(revision 028b0c406001fccbab2830854ecdfad57cc2ab3d)
++++ b/app/routes.py	(date 1721140901160)
+@@ -1,7 +1,8 @@
+ from flask import render_template, redirect, url_for, request, flash, session
+ from app import app, db, bcrypt
+-from app.forms import LoginForm, RegisterForm
+-from app.models import User
++from app.forms import RegisterForm, LoginForm
++from app.models import User, Card
++import datetime
+ 
+ @app.route('/')
+ def home():
+@@ -10,38 +11,167 @@
+ @app.route('/login', methods=['GET', 'POST'])
+ def login():
+     form = LoginForm()
+-    if form.validate_on_submit():
++
++    if request.method == 'POST':
+         user = User.query.filter_by(username=form.username.data).first()
+         if user and bcrypt.check_password_hash(user.password, form.password.data):
++            session.clear()
+             session['user_id'] = user.id
+             session['username'] = user.username
+             flash(f'You are now logged in as {user.username}!', 'success')
+             return redirect(url_for('user_menu'))
+         else:
+             flash('Username or password is incorrect.', 'danger')
++
+     return render_template('authorization/login.html', form=form)
+ 
+ @app.route('/register', methods=['GET', 'POST'])
+ def register():
+     form = RegisterForm()
+-    if form.validate_on_submit():
++
++    if request.method == 'POST' and form.validate_on_submit():
+         hashed_password = bcrypt.generate_password_hash(form.password.data).decode("utf-8")
+-        user = User(username=form.username.data, email=form.email.data, password=hashed_password)
+-        db.session.add(user)
++
++        new_user = User(
++            username=form.username.data,
++            email=form.email.data,
++            password=hashed_password,
++            balance=0,
++            card_number=form.card_number.data,
++            card_date=form.card_date.data
++        )
++
++        db.session.add(new_user)
++        db.session.commit()
++
++        new_card = Card(
++            card_number=form.card_number.data,
++            card_date=form.card_date.data,
++            transaction_date=datetime.date.today()
++        )
++
++        db.session.add(new_card)
+         db.session.commit()
++
+         flash('You are now registered!', 'success')
+         return redirect(url_for('login'))
++
+     return render_template('authorization/register.html', form=form)
+ 
+-@app.route('/usermenu')
++@app.route('/user_menu', methods=['GET', 'POST'])
+ def user_menu():
++    if 'user_id' not in session:
++        flash('You need to login first.', 'danger')
++        return redirect(url_for('login'))
++
++    user = User.query.get(session['user_id'])
++    if not user:
++        flash('User not found.', 'danger')
++        return redirect(url_for('login'))
++
++    return render_template('usermenu.html', user=user)
++
++@app.route('/show_balance')
++def show_balance():
++    if 'user_id' not in session:
++        flash('You need to login first.', 'danger')
++        return redirect(url_for('login'))
++
++    user = User.query.get(session['user_id'])
++    if not user:
++        flash('User not found.', 'danger')
++        return redirect(url_for('login'))
++
++    return render_template('show.html', balance=user.balance)
++
++@app.route('/add_balance', methods=['GET', 'POST'])
++def add_balance():
++    if request.method == 'GET':
++        return render_template('add.html')
+ 
++    user = User.query.get(session['user_id'])
++    if not user:
++        flash('User not found.', 'danger')
++        return redirect(url_for('login'))
++
++    amount = float(request.form['amount'])
++    if amount <= 0:
++        flash('Amount must be greater than zero.', 'danger')
++        return redirect(url_for('add_balance'))
++
++    user.balance += amount
++    db.session.commit()
++
++    flash(f'Balance added successfully. New balance is {user.balance}.', 'success')
++    return redirect(url_for('user_menu'))
++
++@app.route('/delete_account', methods=['POST'])
++def delete_account():
+     if 'user_id' not in session:
+         flash('You need to login first.', 'danger')
+         return redirect(url_for('login'))
+ 
++    user = User.query.get(session['user_id'])
++    if not user:
++        flash('User not found.', 'danger')
++        return redirect(url_for('login'))
++
++    db.session.delete(user)
++    db.session.commit()
++
++    session.clear()
++    flash('Your account has been deleted.', 'success')
++    return redirect(url_for('login'))
++
++@app.route('/transfer', methods=['GET', 'POST'])
++def transfer():
++    if request.method == 'GET':
++        return render_template('transmoney.html')
++
++    recipient_username = request.form['recipient']
++    amount = float(request.form['amount'])
++
++    if amount <= 0:
++        flash('Amount must be greater than zero.', 'danger')
++        return redirect(url_for('transfer'))
++
++    sender = User.query.get(session['user_id'])
++    if not sender:
++        flash('User not found.', 'danger')
++        return redirect(url_for('login'))
++
++    recipient = User.query.filter_by(username=recipient_username).first()
++    if not recipient:
++        flash('Recipient not found.', 'danger')
++        return redirect(url_for('transfer'))
+ 
+-    user_id = session['user_id']
+-    user = User.query.get(user_id)
++    if sender == recipient:
++        flash('You cannot transfer money to yourself.', 'danger')
++        return redirect(url_for('transfer'))
+ 
+-    return render_template('user.menu.html', user=user)
++    if sender.balance < amount:
++        flash('Insufficient balance.', 'danger')
++        return redirect(url_for('transfer'))
++
++    sender.balance -= amount
++    recipient.balance += amount
++
++    db.session.commit()
++
++    flash(f'Transfer of {amount} to {recipient_username} successful.', 'success')
++    return redirect(url_for('user_menu'))
++
++@app.route('/transaction_history')
++def transaction_history():
++    if 'user_id' not in session:
++        flash('You need to login first.', 'danger')
++        return redirect(url_for('login'))
++
++    user = User.query.get(session['user_id'])
++    if not user:
++        flash('User not found.', 'danger')
++        return redirect(url_for('login'))
++
++    transactions = Card.query.filter_by(card_number=user.card_number).all()
++
++    return render_template('transhistory.html', transactions=transactions)
+\ No newline at end of file
+Index: app/templates/user.menu.html
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/templates/user.menu.html b/app/templates/usermenu.html
+rename from app/templates/user.menu.html
+rename to app/templates/usermenu.html
+--- a/app/templates/user.menu.html	(revision 028b0c406001fccbab2830854ecdfad57cc2ab3d)
++++ b/app/templates/usermenu.html	(date 1721140974204)
+@@ -5,8 +5,8 @@
+     <meta name="viewport"
+           content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+     <meta http-equiv="X-UA-Compatible" content="ie=edge">
+-  <title> {% title block%}User menu{%endblock%}</title>
+- <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
++    <title>{% block title %}User menu{% endblock %}</title>
++    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
+           integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+ </head>
+ <body>
+@@ -20,20 +20,27 @@
+         <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
+             <div class="navbar-nav">
+                 {% if session.get('username') %}
+-                    <a class="nav-item nav-link" href="{{ url_for('my_blog') }}">{{session.get('username')}}</a>
+-                    <a class="nav-item nav-link" href="{{ url_for('new_blog') }}">new blog</a>
+-                    <a class="nav-item nav-link" href="{{ url_for('log_out') }}">log out</a>
+-
++                   <a class="nav-item nav-link" href="{{ url_for('show_balance') }}">Show Balance</a>
++                    <a class="nav-item nav-link" href="{{ url_for('add_balance') }}">Add Balance</a>
++                    <a class="nav-item nav-link" href="{{ url_for('transfer') }}">Transfer Money</a>
++                    <a class="nav-item nav-link" href="{{ url_for('transaction_history') }}">Transfer history</a>
++                    <a class="nav-item nav-link" href="{{ url_for('delete_account') }}">Delete Account</a>
+                 {% else %}
+-                <a class="nav-item nav-link" href="{{ url_for('login') }}">Login</a>
+-                <a class="nav-item nav-link" href="{{ url_for('register') }}">Register</a>
++                    <a class="nav-item nav-link" href="{{ url_for('login') }}">Login</a>
++                    <a class="nav-item nav-link" href="{{ url_for('register') }}">Register</a>
+                 {% endif %}
+             </div>
+         </div>
+     </nav>
+-   {% block content %}
++
++    <div class="mt-3">
++        {% block content %}
+ 
+-    {% endblock %}
++        {% endblock %}
++    </div>
+ </div>
++
++<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
++        integrity="sha384-M9r8hLARdZP+4YqbBoVzVw5BkK+Kt+IR0bI1kEUr+gUzJ1i8kFwLLFZDSdHkP5el" crossorigin="anonymous"></script>
+ </body>
+-</html>
+\ No newline at end of file
++</html>
+Index: .idea/dataSources.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/dataSources.xml b/.idea/dataSources.xml
+deleted file mode 100644
+--- a/.idea/dataSources.xml	(revision 028b0c406001fccbab2830854ecdfad57cc2ab3d)
++++ /dev/null	(revision 028b0c406001fccbab2830854ecdfad57cc2ab3d)
+@@ -1,12 +0,0 @@
+-<?xml version="1.0" encoding="UTF-8"?>
+-<project version="4">
+-  <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
+-    <data-source source="LOCAL" name="postgres@localhost" uuid="0261263d-0814-4987-bd5c-ed3dbb282812">
+-      <driver-ref>postgresql</driver-ref>
+-      <synchronize>true</synchronize>
+-      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
+-      <jdbc-url>jdbc:postgresql://localhost:5432/postgres</jdbc-url>
+-      <working-dir>$ProjectFileDir$</working-dir>
+-    </data-source>
+-  </component>
+-</project>
+\ No newline at end of file
+Index: migrations/alembic.ini
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/migrations/alembic.ini b/migrations/alembic.ini
+new file mode 100644
+--- /dev/null	(date 1721135574054)
++++ b/migrations/alembic.ini	(date 1721135574054)
+@@ -0,0 +1,50 @@
++# A generic, single database configuration.
++
++[alembic]
++# template used to generate migration files
++# file_template = %%(rev)s_%%(slug)s
++
++# set to 'true' to run the environment during
++# the 'revision' command, regardless of autogenerate
++# revision_environment = false
++
++
++# Logging configuration
++[loggers]
++keys = root,sqlalchemy,alembic,flask_migrate
++
++[handlers]
++keys = console
++
++[formatters]
++keys = generic
++
++[logger_root]
++level = WARN
++handlers = console
++qualname =
++
++[logger_sqlalchemy]
++level = WARN
++handlers =
++qualname = sqlalchemy.engine
++
++[logger_alembic]
++level = INFO
++handlers =
++qualname = alembic
++
++[logger_flask_migrate]
++level = INFO
++handlers =
++qualname = flask_migrate
++
++[handler_console]
++class = StreamHandler
++args = (sys.stderr,)
++level = NOTSET
++formatter = generic
++
++[formatter_generic]
++format = %(levelname)-5.5s [%(name)s] %(message)s
++datefmt = %H:%M:%S
+Index: migrations/env.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/migrations/env.py b/migrations/env.py
+new file mode 100644
+--- /dev/null	(date 1721135574066)
++++ b/migrations/env.py	(date 1721135574066)
+@@ -0,0 +1,113 @@
++import logging
++from logging.config import fileConfig
++
++from flask import current_app
++
++from alembic import context
++
++# this is the Alembic Config object, which provides
++# access to the values within the .ini file in use.
++config = context.config
++
++# Interpret the config file for Python logging.
++# This line sets up loggers basically.
++fileConfig(config.config_file_name)
++logger = logging.getLogger('alembic.env')
++
++
++def get_engine():
++    try:
++        # this works with Flask-SQLAlchemy<3 and Alchemical
++        return current_app.extensions['migrate'].db.get_engine()
++    except (TypeError, AttributeError):
++        # this works with Flask-SQLAlchemy>=3
++        return current_app.extensions['migrate'].db.engine
++
++
++def get_engine_url():
++    try:
++        return get_engine().url.render_as_string(hide_password=False).replace(
++            '%', '%%')
++    except AttributeError:
++        return str(get_engine().url).replace('%', '%%')
++
++
++# add your model's MetaData object here
++# for 'autogenerate' support
++# from myapp import mymodel
++# target_metadata = mymodel.Base.metadata
++config.set_main_option('sqlalchemy.url', get_engine_url())
++target_db = current_app.extensions['migrate'].db
++
++# other values from the config, defined by the needs of env.py,
++# can be acquired:
++# my_important_option = config.get_main_option("my_important_option")
++# ... etc.
++
++
++def get_metadata():
++    if hasattr(target_db, 'metadatas'):
++        return target_db.metadatas[None]
++    return target_db.metadata
++
++
++def run_migrations_offline():
++    """Run migrations in 'offline' mode.
++
++    This configures the context with just a URL
++    and not an Engine, though an Engine is acceptable
++    here as well.  By skipping the Engine creation
++    we don't even need a DBAPI to be available.
++
++    Calls to context.execute() here emit the given string to the
++    script output.
++
++    """
++    url = config.get_main_option("sqlalchemy.url")
++    context.configure(
++        url=url, target_metadata=get_metadata(), literal_binds=True
++    )
++
++    with context.begin_transaction():
++        context.run_migrations()
++
++
++def run_migrations_online():
++    """Run migrations in 'online' mode.
++
++    In this scenario we need to create an Engine
++    and associate a connection with the context.
++
++    """
++
++    # this callback is used to prevent an auto-migration from being generated
++    # when there are no changes to the schema
++    # reference: http://alembic.zzzcomputing.com/en/latest/cookbook.html
++    def process_revision_directives(context, revision, directives):
++        if getattr(config.cmd_opts, 'autogenerate', False):
++            script = directives[0]
++            if script.upgrade_ops.is_empty():
++                directives[:] = []
++                logger.info('No changes in schema detected.')
++
++    conf_args = current_app.extensions['migrate'].configure_args
++    if conf_args.get("process_revision_directives") is None:
++        conf_args["process_revision_directives"] = process_revision_directives
++
++    connectable = get_engine()
++
++    with connectable.connect() as connection:
++        context.configure(
++            connection=connection,
++            target_metadata=get_metadata(),
++            **conf_args
++        )
++
++        with context.begin_transaction():
++            context.run_migrations()
++
++
++if context.is_offline_mode():
++    run_migrations_offline()
++else:
++    run_migrations_online()
+Index: migrations/README
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/migrations/README b/migrations/README
+new file mode 100644
+--- /dev/null	(date 1721135574084)
++++ b/migrations/README	(date 1721135574084)
+@@ -0,0 +1,1 @@
++Single-database configuration for Flask.
+Index: migrations/script.py.mako
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/migrations/script.py.mako b/migrations/script.py.mako
+new file mode 100644
+--- /dev/null	(date 1721135574100)
++++ b/migrations/script.py.mako	(date 1721135574100)
+@@ -0,0 +1,24 @@
++"""${message}
++
++Revision ID: ${up_revision}
++Revises: ${down_revision | comma,n}
++Create Date: ${create_date}
++
++"""
++from alembic import op
++import sqlalchemy as sa
++${imports if imports else ""}
++
++# revision identifiers, used by Alembic.
++revision = ${repr(up_revision)}
++down_revision = ${repr(down_revision)}
++branch_labels = ${repr(branch_labels)}
++depends_on = ${repr(depends_on)}
++
++
++def upgrade():
++    ${upgrades if upgrades else "pass"}
++
++
++def downgrade():
++    ${downgrades if downgrades else "pass"}
+Index: app/templates/user_menu/show.html
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/templates/user_menu/show.html b/app/templates/user_menu/show.html
+new file mode 100644
+--- /dev/null	(date 1721140760760)
++++ b/app/templates/user_menu/show.html	(date 1721140760760)
+@@ -0,0 +1,21 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>Show Balance</title>
++
++    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
++          integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
++</head>
++<body>
++<div class="container">
++    <h1>Your Balance</h1>
++    <p>Your current balance is: {{ balance }}</p>
++</div>
++
++<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
++        integrity="sha384-M9r8hLARdZP+4YqbBoVzVw5BkK+Kt+IR0bI1kEUr+gUzJ1i8kFwLLFZDSdHkP5el"
++        crossorigin="anonymous"></script>
++</body>
++</html>
+Index: app/templates/authorization/register.html
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><!DOCTYPE html>\r\n<html lang=\"en\">\r\n<head>\r\n    <meta charset=\"UTF-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\r\n    <title>Register</title>\r\n</head>\r\n<body>\r\n\r\n    <form method=\"POST\">\r\n        <label for=\"username\">Username:</label><br>\r\n        <input type=\"text\" id=\"username\" name=\"username\"><br>\r\n        <label for=\"email\">EmaiL:</label><br>\r\n        <input type=\"email\" id=\"email\" name=\"email\"><br>\r\n        <label for=\"password\">password:</label><br>\r\n        <input type=\"password\" id=\"password\" name=\"password\"><br>\r\n\r\n        <label for=\"cardnumber\">Cardnumber:</label><br>\r\n        <input type=\"number\" id=\"cardnumber\" name=\"cardnumber\"><br><br>\r\n\r\n        <input type=\"submit\" value=\"Register\">\r\n    </form>\r\n\r\n</body>\r\n</html>\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/templates/authorization/register.html b/app/templates/authorization/register.html
+--- a/app/templates/authorization/register.html	(revision 028b0c406001fccbab2830854ecdfad57cc2ab3d)
++++ b/app/templates/authorization/register.html	(date 1721135509864)
+@@ -7,17 +7,40 @@
+ </head>
+ <body>
+ 
+-    <form method="POST">
++    <form method="POST" action="{{ url_for('register') }}">
++        {{ form.hidden_tag() }}
++
+         <label for="username">Username:</label><br>
+-        <input type="text" id="username" name="username"><br>
+-        <label for="email">EmaiL:</label><br>
+-        <input type="email" id="email" name="email"><br>
+-        <label for="password">password:</label><br>
+-        <input type="password" id="password" name="password"><br>
++        {{ form.username(size=20) }}<br>
++        {% for error in form.username.errors %}
++            <span style="color: red;">{{ error }}</span><br>
++        {% endfor %}
++
++        <label for="email">Email:</label><br>
++        {{ form.email(size=50) }}<br>
++        {% for error in form.email.errors %}
++            <span style="color: red;">{{ error }}</span><br>
++        {% endfor %}
+ 
+-        <label for="cardnumber">Cardnumber:</label><br>
+-        <input type="number" id="cardnumber" name="cardnumber"><br><br>
++        <label for="password">Password:</label><br>
++        {{ form.password(size=20) }}<br>
++        {% for error in form.password.errors %}
++            <span style="color: red;">{{ error }}</span><br>
++        {% endfor %}
+ 
++        <label for="card_number">Card Number:</label><br>
++        {{ form.card_number(size=16, type="number") }}<br>
++        {% for error in form.card_number.errors %}
++            <span style="color: red;">{{ error }}</span><br>
++        {% endfor %}
++
++        <label for="card_date">Card Expiry Date:</label><br>
++        {{ form.card_date(size=10, type="date") }}<br>
++        {% for error in form.card_date.errors %}
++            <span style="color: red;">{{ error }}</span><br>
++        {% endfor %}
++
++        <br>
+         <input type="submit" value="Register">
+     </form>
+ 
+Index: app/templates/user_menu/add.html
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/templates/user_menu/add.html b/app/templates/user_menu/add.html
+new file mode 100644
+--- /dev/null	(date 1721140771383)
++++ b/app/templates/user_menu/add.html	(date 1721140771383)
+@@ -0,0 +1,27 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>Add Balance</title>
++
++    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
++          integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
++</head>
++<body>
++<div class="container">
++    <h1>Add Balance</h1>
++    <form method="POST">
++        <label for="amount">Amount to Add:</label>
++        <input type="number" id="amount" name="amount" class="form-control" required>
++        <br>
++        <button type="submit" class="btn btn-primary">Add Balance</button>
++    </form>
++</div>
++
++
++<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
++        integrity="sha384-M9r8hLARdZP+4YqbBoVzVw5BkK+Kt+IR0bI1kEUr+gUzJ1i8kFwLLFZDSdHkP5el"
++        crossorigin="anonymous"></script>
++</body>
++</html>
+Index: app/templates/user_menu/transmoney.html
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/templates/user_menu/transmoney.html b/app/templates/user_menu/transmoney.html
+new file mode 100644
+--- /dev/null	(date 1721140760748)
++++ b/app/templates/user_menu/transmoney.html	(date 1721140760748)
+@@ -0,0 +1,29 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>Transfer Money</title>
++
++    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
++          integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
++</head>
++<body>
++<div class="container">
++    <h1>Transfer Money</h1>
++    <form method="POST">
++        <label for="recipient">Recipient Username:</label>
++        <input type="text" id="recipient" name="recipient" class="form-control" required>
++        <br>
++        <label for="amount">Amount to Transfer:</label>
++        <input type="number" id="amount" name="amount" class="form-control" required>
++        <br>
++        <button type="submit" class="btn btn-primary">Transfer Money</button>
++    </form>
++</div>
++
++<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
++        integrity="sha384-M9r8hLARdZP+4YqbBoVzVw5BkK+Kt+IR0bI1kEUr+gUzJ1i8kFwLLFZDSdHkP5el"
++        crossorigin="anonymous"></script>
++</body>
++</html>
+Index: app/templates/user_menu/transhistory.html
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/templates/user_menu/transhistory.html b/app/templates/user_menu/transhistory.html
+new file mode 100644
+--- /dev/null	(date 1721140760781)
++++ b/app/templates/user_menu/transhistory.html	(date 1721140760781)
+@@ -0,0 +1,39 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>Transaction History</title>
++
++    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
++          integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
++</head>
++<body>
++<div class="container">
++    <h1>Transaction History</h1>
++    <table class="table">
++        <thead>
++        <tr>
++            <th>Date</th>
++            <th>Amount</th>
++            <th>Description</th>
++        </tr>
++        </thead>
++        <tbody>
++        {% for transaction in transactions %}
++        <tr>
++            <td>{{ transaction.date }}</td>
++            <td>{{ transaction.amount }}</td>
++            <td>{{ transaction.description }}</td>
++        </tr>
++        {% endfor %}
++        </tbody>
++    </table>
++</div>
++
++<!-- Bootstrap JS Bundle (Popper included) -->
++<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
++        integrity="sha384-M9r8hLARdZP+4YqbBoVzVw5BkK+Kt+IR0bI1kEUr+gUzJ1i8kFwLLFZDSdHkP5el"
++        crossorigin="anonymous"></script>
++</body>
++</html>
+Index: app/templates/user_menu/delete_account.html
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/templates/user_menu/delete_account.html b/app/templates/user_menu/delete_account.html
+new file mode 100644
+--- /dev/null	(date 1721140663232)
++++ b/app/templates/user_menu/delete_account.html	(date 1721140663232)
+@@ -0,0 +1,25 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>Delete Account</title>
++
++    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
++          integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
++</head>
++<body>
++<div class="container">
++    <h1>Delete Account</h1>
++    <p>Are you sure you want to delete your account?</p>
++    <form method="POST">
++        <button type="submit" class="btn btn-danger">Delete Account</button>
++    </form>
++</div>
++
++
++<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
++        integrity="sha384-M9r8hLARdZP+4YqbBoVzVw5BkK+Kt+IR0bI1kEUr+gUzJ1i8kFwLLFZDSdHkP5el"
++        crossorigin="anonymous"></script>
++</body>
++</html>
+Index: app/forms.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>from flask_wtf import FlaskForm\r\nfrom wtforms import StringField, PasswordField, SubmitField\r\nfrom wtforms.validators import DataRequired, Length, Email, EqualTo\r\n\r\nclass LoginForm(FlaskForm):\r\n    username = StringField('Username', validators=[DataRequired(), Length(min=2, max=20)])\r\n    password = PasswordField('Password', validators=[DataRequired()])\r\n    submit = SubmitField('Login')\r\n\r\nclass RegisterForm(FlaskForm):\r\n    username = StringField('Username', validators=[DataRequired(), Length(min=2, max=20)])\r\n    email = StringField('Email', validators=[DataRequired(), Email()])\r\n    password = PasswordField('Password', validators=[DataRequired()])\r\n    confirm_password = PasswordField('Confirm Password', validators=[DataRequired(), EqualTo('password')])\r\n    submit = SubmitField('Register')\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/forms.py b/app/forms.py
+--- a/app/forms.py	(revision 028b0c406001fccbab2830854ecdfad57cc2ab3d)
++++ b/app/forms.py	(date 1721135744812)
+@@ -1,5 +1,5 @@
+ from flask_wtf import FlaskForm
+-from wtforms import StringField, PasswordField, SubmitField
++from wtforms import StringField, PasswordField, SubmitField,EmailField,DateField
+ from wtforms.validators import DataRequired, Length, Email, EqualTo
+ 
+ class LoginForm(FlaskForm):
+@@ -7,9 +7,11 @@
+     password = PasswordField('Password', validators=[DataRequired()])
+     submit = SubmitField('Login')
+ 
++
+ class RegisterForm(FlaskForm):
+     username = StringField('Username', validators=[DataRequired(), Length(min=2, max=20)])
+-    email = StringField('Email', validators=[DataRequired(), Email()])
++    email = EmailField('Email', validators=[DataRequired(), Email()])
+     password = PasswordField('Password', validators=[DataRequired()])
+-    confirm_password = PasswordField('Confirm Password', validators=[DataRequired(), EqualTo('password')])
++    card_number = StringField('Card Number', validators=[DataRequired(), Length(min=16, max=16)])
++    card_date = DateField('Card Expiry Date', validators=[DataRequired()])
+     submit = SubmitField('Register')
+Index: requirements.txt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>python-dotenv==1.0.1\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/requirements.txt b/requirements.txt
+--- a/requirements.txt	(revision 028b0c406001fccbab2830854ecdfad57cc2ab3d)
++++ b/requirements.txt	(date 1721125642599)
+@@ -1,1 +1,15 @@
++blinker==1.8.2
++click==8.1.7
++dnspython==2.6.1
++email_validator==2.2.0
++Flask==3.0.3
++Flask-SQLAlchemy==3.1.1
++greenlet==3.0.3
++idna==3.7
++itsdangerous==2.2.0
++Jinja2==3.1.4
++MarkupSafe==2.1.5
+ python-dotenv==1.0.1
++SQLAlchemy==2.0.31
++typing_extensions==4.12.2
++Werkzeug==3.0.3
+Index: app/config.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import os\r\nfrom dotenv import load_dotenv\r\nfrom flask import Flask\r\nfrom flask_sqlalchemy import SQLAlchemy\r\nfrom flask_migrate import Migrate\r\nfrom flask_bcrypt import Bcrypt\r\n\r\nload_dotenv()\r\n\r\n\r\napp = Flask(__name__)\r\n\r\nclass Config:\r\n    SQLALCHEMY_DATABASE_URI = f\"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}@localhost:5432/{os.getenv('POSTGRES_DB')}\"\r\n    SECRET_KEY = os.getenv('SECRET_KEY')\r\n    SQLALCHEMY_TRACK_MODIFICATIONS = False\r\n\r\n\r\napp.config.from_object(Config)\r\n\r\n\r\ndb = SQLAlchemy(app)\r\nmigrate = Migrate(app, db)\r\nbcrypt = Bcrypt(app)\r\n\r\n\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/config.py b/app/config.py
+--- a/app/config.py	(revision 028b0c406001fccbab2830854ecdfad57cc2ab3d)
++++ b/app/config.py	(date 1721127938891)
+@@ -7,7 +7,6 @@
+ 
+ load_dotenv()
+ 
+-
+ app = Flask(__name__)
+ 
+ class Config:
+@@ -15,12 +14,8 @@
+     SECRET_KEY = os.getenv('SECRET_KEY')
+     SQLALCHEMY_TRACK_MODIFICATIONS = False
+ 
+-
+ app.config.from_object(Config)
+ 
+-
+ db = SQLAlchemy(app)
+ migrate = Migrate(app, db)
+ bcrypt = Bcrypt(app)
+-
+-
+Index: app/__init__.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import os\r\nfrom dotenv import load_dotenv\r\nfrom flask import Flask\r\nfrom flask_sqlalchemy import SQLAlchemy\r\nfrom flask_migrate import Migrate\r\nfrom flask_bcrypt import Bcrypt\r\n\r\nload_dotenv()\r\n\r\napp = Flask(__name__)\r\n\r\n\r\nclass Config:\r\n    SQLALCHEMY_DATABASE_URI = f\"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}@localhost:5432/{os.getenv('POSTGRES_DB')}\"\r\n    SECRET_KEY = os.getenv('SECRET_KEY')\r\n    SQLALCHEMY_TRACK_MODIFICATIONS = False\r\n\r\napp.config.from_object(Config)\r\n\r\ndb = SQLAlchemy(app)\r\nmigrate = Migrate(app, db)\r\nbcrypt = Bcrypt(app)\r\n\r\nfrom app import routes, models\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/__init__.py b/app/__init__.py
+--- a/app/__init__.py	(revision 028b0c406001fccbab2830854ecdfad57cc2ab3d)
++++ b/app/__init__.py	(date 1721132412509)
+@@ -7,18 +7,20 @@
+ 
+ load_dotenv()
+ 
++
+ app = Flask(__name__)
+ 
+-
+ class Config:
+     SQLALCHEMY_DATABASE_URI = f"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}@localhost:5432/{os.getenv('POSTGRES_DB')}"
+     SECRET_KEY = os.getenv('SECRET_KEY')
+     SQLALCHEMY_TRACK_MODIFICATIONS = False
+ 
++
+ app.config.from_object(Config)
+ 
+ db = SQLAlchemy(app)
+ migrate = Migrate(app, db)
+ bcrypt = Bcrypt(app)
+ 
+-from app import routes, models
++
++from app import routes
+Index: app/templates/home.html
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>{% extends  'base.html' %}\r\n\r\n{% block title %}Home {% endblock %}\r\n\r\n{% block content %}\r\n<h3>Welcome My Blog</h3>\r\n<h6>Choice my blog and enjoy it !!!</h6>\r\n{% endblock %}
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/templates/home.html b/app/templates/home.html
+--- a/app/templates/home.html	(revision 028b0c406001fccbab2830854ecdfad57cc2ab3d)
++++ b/app/templates/home.html	(date 1721140306866)
+@@ -1,8 +1,38 @@
+-{% extends  'base.html' %}
++<!DOCTYPE html>
++<html lang="en">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>Home</title>
++    <!-- Bootstrap CSS -->
++    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
++          integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
++    <!-- Custom styles -->
++    <style>
++        /* Customize styles here */
++    </style>
++</head>
++<body>
++<div class="container">
++    <header class="mt-3">
++        <h1>Welcome to Flask Blog</h1>
++    </header>
++    <main>
++        <p>This is the homepage of our Flask Blog application.</p>
++        <p>Feel free to explore other features:</p>
++        <ul>
++            <li><a href="{{ url_for('login') }}">Login</a></li>
++            <li><a href="{{ url_for('register') }}">Register</a></li>
++        </ul>
++    </main>
++    <footer class="mt-3">
++        <p>&copy; 2024 Flask Blog. All rights reserved.</p>
++    </footer>
++</div>
+ 
+-{% block title %}Home {% endblock %}
+-
+-{% block content %}
+-<h3>Welcome My Blog</h3>
+-<h6>Choice my blog and enjoy it !!!</h6>
+-{% endblock %}
+\ No newline at end of file
++<!-- Bootstrap JS Bundle (Popper included) -->
++<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
++        integrity="sha384-M9r8hLARdZP+4YqbBoVzVw5BkK+Kt+IR0bI1kEUr+gUzJ1i8kFwLLFZDSdHkP5el"
++        crossorigin="anonymous"></script>
++</body>
++</html>
